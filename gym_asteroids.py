@@ -4,20 +4,28 @@ import time
 import pickle
 from math import sqrt
 from numpy.linalg import norm
-from gym import Env
 from tqdm import tqdm
 from itertools import product
 from gym.utils import seeding
+from gym import Env
 from typing import Tuple, List, Dict
 from gym.spaces.discrete import Discrete
-from gym.envs.classic_control.rendering import Viewer, Transform, make_polygon, make_circle
+
+RENDER = True
+
+if RENDER:
+    from gym.envs.classic_control.rendering import Viewer, Transform, make_polygon, make_circle
 
 
 class AgentState2D:
-    def __init__(self, position: np.array, screen_ratios: np.array):
+    def __init__(self, position: np.array, screen_ratios: np.array = None):
         self.position = position
-        self._transform = Transform()
-        self.screen_ratios = screen_ratios
+
+        if RENDER:
+            assert screen_ratios is not None
+
+            self._transform = Transform()
+            self.screen_ratios = screen_ratios
 
     def reposition(self, position: np.array):
         self.__set_position(position)
@@ -27,42 +35,54 @@ class AgentState2D:
 
     def __set_position(self, position: np.array):
         self.position = position
-        translation = self.position * self.screen_ratios
-        self._transform.set_translation(*tuple(translation))
+
+        if RENDER:
+            translation = self.position * self.screen_ratios
+            self._transform.set_translation(*tuple(translation))
 
     def __str__(self) -> str:
         return str(tuple(self.position))
 
 
 class CircleAgentState2D(AgentState2D):
-    def __init__(self, position: np.array, radius: float, screen_ratios: np.array, color: Tuple = None):
+    def __init__(self, position: np.array, radius: float = None, screen_ratios: np.array = None, color: Tuple = None):
         super(CircleAgentState2D, self).__init__(position, screen_ratios)
-        self.__radius = radius
-        self.circle = make_circle(radius)
-        self.circle.add_attr(self._transform)
 
-        if color:
-            self.circle.set_color(*color)
+        if RENDER:
+            assert radius is not None
+            assert screen_ratios is not None
+
+            self.__radius = radius
+            self.circle = make_circle(radius)
+            self.circle.add_attr(self._transform)
+
+            if color:
+                self.circle.set_color(*color)
 
 
 class SquareAgentState2D(AgentState2D):
-    def __init__(self, position: np.array, side_length: int, screen_ratios: np.array, color: Tuple = None):
+    def __init__(self, position: np.array, side_length: int = None, screen_ratios: np.array = None,
+                 color: Tuple = None):
         super(SquareAgentState2D, self).__init__(position, screen_ratios)
-        self.__side_length = side_length
 
-        position_x, position_y = position
-        half_side_length = side_length / 2
-        left = position_x - half_side_length
-        right = position_x + half_side_length
-        top = position_y + half_side_length
-        bottom = position_y - half_side_length
+        if RENDER:
+            assert side_length is not None
+            assert screen_ratios is not None
 
-        square_points_positions = [(left, bottom), (left, top), (right, top), (right, bottom)]
-        self.square = make_polygon(square_points_positions, filled=True)
-        self.square.add_attr(self._transform)
+            self.__side_length = side_length
+            position_x, position_y = position
+            half_side_length = side_length / 2
+            left = position_x - half_side_length
+            right = position_x + half_side_length
+            top = position_y + half_side_length
+            bottom = position_y - half_side_length
 
-        if color:
-            self.square.set_color(*color)
+            square_points_positions = [(left, bottom), (left, top), (right, top), (right, bottom)]
+            self.square = make_polygon(square_points_positions, filled=True)
+            self.square.add_attr(self._transform)
+
+            if color:
+                self.square.set_color(*color)
 
 
 class AsteroidsGameEnvState:
@@ -109,6 +129,7 @@ class AsteroidsGameEnvState:
         collided = any([np.array_equal(asteroid.position, self.__quad.position)
                         for asteroid in self.__asteroids.values()])
         collided_boolean_int = int(collided)
+
         return collided_boolean_int
 
     def is_terminal(self) -> bool:
@@ -220,45 +241,51 @@ class AsteroidsGameEnv(Env):
         A discrete gym space to model the possible moves of the quadrotor agent
     """
 
-    def __init__(self, grid_side_length: int, quad_radius: float, q_p_0: np.array, asteroid_radius: float,
-                 num_of_asteroids: int, screen_width: int, screen_height: int, observed_moves: Dict[str, List[int]],
-                 actions: Dict[str, Tuple[float, float]], alpha: float, gamma: float, epsilon: float):
+    def __init__(self, grid_side_length: int, q_p_0: np.array, num_of_asteroids: int,
+                 actions: Dict[str, Tuple[float, float]], observed_moves: Dict[str, List[int]], alpha: float,
+                 gamma: float, epsilon: float, quad_radius: float = None, asteroid_radius: float = None,
+                 screen_width: int = None, screen_height: int = None
+                 ):
         super(AsteroidsGameEnv, self).__init__()
         self.__grid_side_length = grid_side_length
-        self.__quad_radius = quad_radius
-        self.__asteroid_radius = asteroid_radius
 
         self.__observed_moves = list(product(observed_moves['x'], observed_moves['y']))
         observed_moves_n = len(self.__observed_moves)
         self.__actions = {i: action for i, action in enumerate(actions.values())}
-        self.__num_of_asteroids = num_of_asteroids
         self.__action_space_n = len(actions)
         self.__action_space = Discrete(self.__action_space_n)
         self.q_learner = QLearner(self.__action_space_n, observed_moves_n, alpha, gamma, epsilon)
         self.seed()
-        self.__screen_shape = np.array([screen_width, screen_height])
-        self.__screen_ratios = self.__screen_shape / self.__grid_side_length
+
+        if RENDER:
+            assert screen_width is not None
+            assert screen_height is not None
+
+            self.__screen_shape = np.array([screen_width, screen_height])
+            screen_ratios = self.__screen_shape / self.__grid_side_length
+            observed_locations_squares_side_length = 15
+            square_color = (255, 255, 0)
+        else:
+            screen_ratios, observed_locations_squares_side_length, square_color = [None] * 3
 
         self.__q_p_0 = q_p_0
         q_p_null = np.array([0, 0])
         quad_color = (1, 0, 0)
         self.__quad = CircleAgentState2D(position=q_p_null,
                                          radius=quad_radius,
-                                         screen_ratios=self.__screen_ratios,
+                                         screen_ratios=screen_ratios,
                                          color=quad_color)
 
-        observed_locations_squares_side_length = 15
-        square_color = (255, 255, 0)
         self.__observed_elements = {element_id: SquareAgentState2D(position=q_p_null,
                                                                    side_length=observed_locations_squares_side_length,
-                                                                   screen_ratios=self.__screen_ratios,
+                                                                   screen_ratios=screen_ratios,
                                                                    color=square_color)
-                            for element_id, observed_move in enumerate(self.__observed_moves)}
+                                    for element_id, observed_move in enumerate(self.__observed_moves)}
 
         self.__asteroids = {asteroid_id: CircleAgentState2D(position=self.__randomize_asteroid_position(),
                                                             radius=asteroid_radius,
-                                                            screen_ratios=self.__screen_ratios)
-                            for asteroid_id in range(self.__num_of_asteroids)}
+                                                            screen_ratios=screen_ratios)
+                            for asteroid_id in range(num_of_asteroids)}
 
         self.__np_random, self.__viewer, self.__t, self.__done, self.__learning = [None] * 5
         self.__state = self.reset()
@@ -273,14 +300,16 @@ class AsteroidsGameEnv(Env):
                                 size=(2,))
         return pos
 
-    def reset(self) -> AsteroidsGameEnvState:
-        self.__quad.reposition(self.__q_p_0)
-
-        if not self.__learning:
+    def __reposition_observed_elements(self, quad_position: np.array):
+        if RENDER and not self.__learning:
             for element_id, observed_element in self.__observed_elements.items():
                 current_observed_move = self.__observed_moves[element_id]
-                new_element_position = self.__q_p_0 + current_observed_move
+                new_element_position = quad_position + current_observed_move
                 observed_element.reposition(new_element_position)
+
+    def reset(self) -> AsteroidsGameEnvState:
+        self.__quad.reposition(self.__q_p_0)
+        self.__reposition_observed_elements(self.__q_p_0)
 
         for asteroid in self.__asteroids.values():
             new_initial_position = self.__randomize_asteroid_position()
@@ -299,18 +328,13 @@ class AsteroidsGameEnv(Env):
             -> AsteroidsGameEnvState:
         if reposition_quad:
             self.__quad.reposition(quad_vector)
-
-            if not self.__learning:
-                for element_id, observed_element in self.__observed_elements.items():
-                    current_observed_move = self.__observed_moves[element_id]
-                    new_element_position = quad_vector + current_observed_move
-                    observed_element.reposition(new_element_position)
-
+            self.__reposition_observed_elements(quad_vector)
         else:
             self.__quad.step(quad_vector)
 
-            for element_id, observed_element in self.__observed_elements.items():
-                observed_element.step(quad_vector)
+            if RENDER and not self.__learning:
+                for element_id, observed_element in self.__observed_elements.items():
+                    observed_element.step(quad_vector)
 
         asteroids_unit_vector = np.array([0, -1])
         for asteroid in self.__asteroids.values():
@@ -329,7 +353,7 @@ class AsteroidsGameEnv(Env):
         done = False
         reward = 0
 
-        if action_id in self.__actions:
+        if action_id in self.__actions:  # check what happens here
             quad_step_vector = self.__actions[action_id]
             step_vector_norm = norm(quad_step_vector)
             new_state = self.__agents_step(quad_step_vector)
@@ -377,7 +401,7 @@ class AsteroidsGameEnv(Env):
             self.__state = self.reset()
 
             while not self.__done:
-                if render:
+                if RENDER and render:
                     self.render()
 
                 if step_delay:
@@ -391,7 +415,7 @@ class AsteroidsGameEnv(Env):
 
             self.q_learner.learning_episodes += 1
 
-            if render:
+            if RENDER and render:
                 self.render()
 
         print('Learning done')
@@ -404,7 +428,8 @@ class AsteroidsGameEnv(Env):
         num_of_collisions = 0
 
         while not self.__done:
-            self.render()
+            if RENDER:
+                self.render()
 
             if step_delay:
                 time.sleep(step_delay)
@@ -442,7 +467,7 @@ class AsteroidsGameEnv(Env):
                   f'Total learning episodes: {self.q_learner.learning_episodes}')
 
     def close(self):
-        if self.__viewer:
+        if RENDER and self.__viewer:
             self.__viewer.close()
             self.__viewer = None
 
@@ -453,9 +478,9 @@ if __name__ == '__main__':
     q_p_0 = np.array([int(grid_side_length / 2), int(grid_side_length / 3)])
     asteroids_radius = 5
     num_of_asteroids = 400
-    screen_width = 600
-    screen_height = 400
-    episodes_num = 100
+    screen_width = 1400
+    screen_height = int(screen_width / 1.5)
+    episodes_num = 10000
     step_delay = 1
     observed_moves = {'x': [-1, 0, 1],
                       'y': [0, 1, 2]}
@@ -471,20 +496,12 @@ if __name__ == '__main__':
     epsilon = 0.2
     saved_Q_learner_filename = 'Q_learner.pickle'
 
-    env = AsteroidsGameEnv(grid_side_length=grid_side_length,
-                           quad_radius=quad_radius,
-                           q_p_0=q_p_0,
-                           asteroid_radius=asteroids_radius,
-                           num_of_asteroids=num_of_asteroids,
-                           screen_width=screen_width,
-                           screen_height=screen_height,
-                           observed_moves=observed_moves,
-                           actions=actions,
-                           alpha=alpha,
-                           gamma=gamma,
-                           epsilon=epsilon)
+    env = AsteroidsGameEnv(grid_side_length=grid_side_length, q_p_0=q_p_0, num_of_asteroids=num_of_asteroids,
+                           actions=actions, observed_moves=observed_moves, alpha=alpha, gamma=gamma, epsilon=epsilon,
+                           quad_radius=quad_radius, asteroid_radius=asteroids_radius, screen_width=screen_width,
+                           screen_height=screen_height)
 
     env.load_Q_learner(saved_Q_learner_filename)
-    env.learn(episodes_num, render=False)
+    env.learn(episodes_num, render=True)
     env.save_Q_learner(saved_Q_learner_filename)
     env.act_out_optimally()
