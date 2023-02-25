@@ -2,14 +2,11 @@ import os
 import numpy as np
 import time
 import pickle
-from math import sqrt
-from numpy.linalg import norm
-from tqdm import tqdm
-from itertools import product
-from gym.utils import seeding
-from gym import Env
+import math
+import itertools
+import gym
+import tqdm
 from typing import Tuple, List, Dict
-from gym.spaces.discrete import Discrete
 
 RENDER = True
 
@@ -85,7 +82,7 @@ class SquareAgentState2D(AgentState2D):
                 self.square.set_color(*color)
 
 
-class AsteroidsGameEnvState:
+class AsteroidsGameState:
     """
     Asteroids game environment state base class
 
@@ -163,7 +160,7 @@ class QLearner:
 
         self.__action_space_n = action_space_n
         self.__observed_moves_n = observed_moves_n
-        self.__n = int(sqrt(self.__observed_moves_n))
+        self.__n = int(math.sqrt(self.__observed_moves_n))
         self.Q_table = np.zeros([2] * observed_moves_n + [action_space_n])
         self.__alpha = alpha
         self.__gamma = gamma
@@ -209,13 +206,12 @@ class QLearner:
 
         if next_action_id in range(self.__action_space_n) and \
                 len(old_state_id) == len(new_state_id) == self.__observed_moves_n:
-            old_state_id = list((int(k) for k in old_state_id))
-            new_state_id = list((int(k) for k in new_state_id))
+            old_state_id = [int(k) for k in old_state_id]
+            new_state_id = [int(k) for k in new_state_id]
             old_q_value = self.Q_table[old_state_id]
             max_value = np.max(self.Q_table[new_state_id, :])
 
-            self.Q_table[old_state_id] = old_q_value + self.__alpha * \
-                                         (reward + self.__gamma * max_value - old_q_value)
+            self.Q_table[old_state_id] = old_q_value + self.__alpha * (reward + self.__gamma * max_value - old_q_value)
 
     def get_maximal_expected_value_action(self, old_state_id: Tuple) -> int:
         """
@@ -224,6 +220,7 @@ class QLearner:
         :param old_state_id: The id of the old state
         :return Next action id in the range [0, 1, ..., self.__action_space_n-1]
         """
+        old_state_id = [int(k) for k in old_state_id]
         q_table_slice_to_consider = self.Q_table[old_state_id]
         maximum_value_actions = np.where(q_table_slice_to_consider == q_table_slice_to_consider.max())[0]
         next_action_id = np.random.choice(maximum_value_actions)
@@ -231,7 +228,7 @@ class QLearner:
         return next_action_id
 
 
-class AsteroidsGameEnv(Env):
+class AsteroidsGameEnv(gym.Env):
     """
     Asteroid game environment base class
 
@@ -243,19 +240,27 @@ class AsteroidsGameEnv(Env):
         A discrete gym space to model the possible moves of the quadrotor agent
     """
 
-    def __init__(self, grid_side_length: int, q_p_0: np.array, num_of_asteroids: int,
-                 actions: Dict[str, Tuple[float, float]], observed_moves: Dict[str, List[int]], alpha: float,
-                 gamma: float, epsilon: float, quad_radius: float = None, asteroid_radius: float = None,
-                 screen_width: int = None, screen_height: int = None
+    def __init__(self,
+                 grid_side_length: int,
+                 q_p_0: np.array,
+                 num_of_asteroids: int,
+                 actions: Dict[str, Tuple[float, float]],
+                 observed_moves: Dict[str, List[int]], alpha: float,
+                 gamma: float,
+                 epsilon: float,
+                 quad_radius: float = None,
+                 asteroid_radius: float = None,
+                 screen_width: int = None,
+                 screen_height: int = None
                  ):
         super(AsteroidsGameEnv, self).__init__()
         self.__grid_side_length = grid_side_length
 
-        self.__observed_moves = list(product(observed_moves['x'], observed_moves['y']))
+        self.__observed_moves = list(itertools.product(observed_moves['x'], observed_moves['y']))
         observed_moves_n = len(self.__observed_moves)
         self.__actions = {i: action for i, action in enumerate(actions.values())}
         self.__action_space_n = len(actions)
-        self.__action_space = Discrete(self.__action_space_n)
+        self.__action_space = gym.spaces.discrete.Discrete(self.__action_space_n)
         self.q_learner = QLearner(self.__action_space_n, observed_moves_n, alpha, gamma, epsilon)
         self.seed()
 
@@ -293,7 +298,7 @@ class AsteroidsGameEnv(Env):
         self.__state = self.reset()
 
     def seed(self, seed=None) -> List[int]:
-        self.__np_random, seed = seeding.np_random(seed)
+        self.__np_random, seed = gym.utils.seeding.np_random(seed)
         return [seed]
 
     def __randomize_asteroid_position(self) -> np.array:
@@ -309,7 +314,7 @@ class AsteroidsGameEnv(Env):
                 new_element_position = quad_position + current_observed_move
                 observed_element.reposition(new_element_position)
 
-    def reset(self) -> AsteroidsGameEnvState:
+    def reset(self) -> AsteroidsGameState:
         self.__quad.reposition(self.__q_p_0)
         self.__reposition_observed_elements(self.__q_p_0)
 
@@ -317,17 +322,17 @@ class AsteroidsGameEnv(Env):
             new_initial_position = self.__randomize_asteroid_position()
             asteroid.reposition(new_initial_position)
 
-        new_state = AsteroidsGameEnvState(quad=self.__quad,
-                                          asteroids=self.__asteroids,
-                                          observed_moves=self.__observed_moves,
-                                          grid_side_length=self.__grid_side_length)
+        new_state = AsteroidsGameState(quad=self.__quad,
+                                       asteroids=self.__asteroids,
+                                       observed_moves=self.__observed_moves,
+                                       grid_side_length=self.__grid_side_length)
         self.__t = 0
         self.__done = False
 
         return new_state
 
     def __agents_step(self, quad_vector: np.array, reposition_quad: bool = False) \
-            -> AsteroidsGameEnvState:
+            -> AsteroidsGameState:
         if reposition_quad:
             self.__quad.reposition(quad_vector)
             self.__reposition_observed_elements(quad_vector)
@@ -342,22 +347,22 @@ class AsteroidsGameEnv(Env):
         for asteroid in self.__asteroids.values():
             asteroid.step(asteroids_unit_vector)
 
-        new_state = AsteroidsGameEnvState(quad=self.__quad,
-                                          asteroids=self.__asteroids,
-                                          observed_moves=self.__observed_moves,
-                                          grid_side_length=self.__grid_side_length)
+        new_state = AsteroidsGameState(quad=self.__quad,
+                                       asteroids=self.__asteroids,
+                                       observed_moves=self.__observed_moves,
+                                       grid_side_length=self.__grid_side_length)
         self.__t += 1
 
         return new_state
 
-    def step(self, action_id: int) -> Tuple[AsteroidsGameEnvState, int, bool]:
+    def step(self, action_id: int) -> Tuple[AsteroidsGameState, int, bool]:
         new_state = None
         done = False
         reward = 0
 
         if action_id in self.__actions:  # check what happens here
             quad_step_vector = self.__actions[action_id]
-            step_vector_norm = norm(quad_step_vector)
+            step_vector_norm = np.linalg.norm(quad_step_vector)
             new_state = self.__agents_step(quad_step_vector)
             num_of_observed_asteroids = new_state.num_of_observed_asteroids()
             has_collided = new_state.has_collided()
@@ -373,7 +378,7 @@ class AsteroidsGameEnv(Env):
 
         return new_state, reward, done
 
-    def render(self, mode='human'):
+    def render(self, mode: str = 'human'):
         if self.__viewer is None:
             self.__viewer = Viewer(*self.__screen_shape)
 
@@ -399,7 +404,7 @@ class AsteroidsGameEnv(Env):
         print('Starting to learn...')
         self.__learning = True
 
-        for _ in tqdm(range(episodes_num)):
+        for _ in tqdm.tqdm(range(episodes_num)):
             self.__state = self.reset()
 
             while not self.__done:
@@ -482,7 +487,7 @@ if __name__ == '__main__':
     num_of_asteroids = 400
     screen_width = 1400
     screen_height = int(screen_width / 1.5)
-    episodes_num = 10000
+    episodes_num = 10
     step_delay = 1
     observed_moves = {'x': [-1, 0, 1],
                       'y': [0, 1, 2]}
@@ -498,9 +503,17 @@ if __name__ == '__main__':
     epsilon = 0.2
     saved_Q_learner_filename = 'Q_learner.pickle'
 
-    env = AsteroidsGameEnv(grid_side_length=grid_side_length, q_p_0=q_p_0, num_of_asteroids=num_of_asteroids,
-                           actions=actions, observed_moves=observed_moves, alpha=alpha, gamma=gamma, epsilon=epsilon,
-                           quad_radius=quad_radius, asteroid_radius=asteroids_radius, screen_width=screen_width,
+    env = AsteroidsGameEnv(grid_side_length=grid_side_length,
+                           q_p_0=q_p_0,
+                           num_of_asteroids=num_of_asteroids,
+                           actions=actions,
+                           observed_moves=observed_moves,
+                           alpha=alpha,
+                           gamma=gamma,
+                           epsilon=epsilon,
+                           quad_radius=quad_radius,
+                           asteroid_radius=asteroids_radius,
+                           screen_width=screen_width,
                            screen_height=screen_height)
 
     env.load_Q_learner(saved_Q_learner_filename)
