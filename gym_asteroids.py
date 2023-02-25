@@ -1,5 +1,7 @@
 import os
 import numpy as np
+from matplotlib import animation
+import matplotlib.pyplot as plt
 import time
 import pickle
 import math
@@ -148,7 +150,12 @@ class QLearner:
         The Q-table used to perform Q-learning, assuming each observed spot either has an asteroid or not
     """
 
-    def __init__(self, action_space_n: int, observed_moves_n: int, alpha: float, gamma: float, epsilon: float):
+    def __init__(self,
+                 action_space_n: int,
+                 observed_moves_n: int,
+                 alpha: float,
+                 gamma: float,
+                 epsilon: float):
         """
         :param action_space_n: The number of available actions to perform at each step
         :param observed_moves_n: The number of observed elements the agent has at each state,
@@ -213,13 +220,15 @@ class QLearner:
 
             self.Q_table[old_state_id] = old_q_value + self.__alpha * (reward + self.__gamma * max_value - old_q_value)
 
-    def get_maximal_expected_value_action(self, old_state_id: Tuple) -> int:
+    def get_maximal_expected_value_action(self,
+                                          old_state_id: Tuple) -> int:
         """
         Retrieve the action that maximizes the expectation value
 
         :param old_state_id: The id of the old state
         :return Next action id in the range [0, 1, ..., self.__action_space_n-1]
         """
+
         old_state_id = [int(k) for k in old_state_id]
         q_table_slice_to_consider = self.Q_table[old_state_id]
         maximum_value_actions = np.where(q_table_slice_to_consider == q_table_slice_to_consider.max())[0]
@@ -296,6 +305,8 @@ class AsteroidsGameEnv(gym.Env):
 
         self.__np_random, self.__viewer, self.__t, self.__done, self.__learning = [None] * 5
         self.__state = self.reset()
+
+        self.__frames = []
 
     def seed(self, seed=None) -> List[int]:
         self.__np_random, seed = gym.utils.seeding.np_random(seed)
@@ -398,7 +409,10 @@ class AsteroidsGameEnv(gym.Env):
         if not self.__state:
             return None
 
-        return self.__viewer.render(return_rgb_array=mode == 'rgb_array')
+        render_result = self.__viewer.render(return_rgb_array=mode == 'rgb_array')
+        self.__frames += [render_result]
+
+        return render_result
 
     def learn(self, episodes_num: int, render: bool = True, step_delay: float = None):
         print('Starting to learn...')
@@ -422,13 +436,11 @@ class AsteroidsGameEnv(gym.Env):
 
             self.q_learner.learning_episodes += 1
 
-            if RENDER and render:
-                self.render()
-
         print('Learning done')
         self.__learning = False
 
         self.close()
+        # self.__save_frames_as_gif()
 
     def act_out_optimally(self, step_delay: float = 0.1):
         self.__state = self.reset()
@@ -443,7 +455,7 @@ class AsteroidsGameEnv(gym.Env):
 
             old_state_index = self.__state.id()
             next_action_id = self.q_learner.get_maximal_expected_value_action(old_state_index)
-            quad_step_vector = self.__actions[next_action_id]
+            quad_step_vector = self.__actions[next_action_id % self.__action_space_n]
             self.__state = self.__agents_step(quad_step_vector)
 
             has_collided = self.__state.has_collided()
@@ -477,6 +489,28 @@ class AsteroidsGameEnv(gym.Env):
         if RENDER and self.__viewer:
             self.__viewer.close()
             self.__viewer = None
+
+    def __save_frames_as_gif(self,
+                             path: str = './',
+                             filename: str = 'gym_animation.gif'):
+
+        # Mess with this to change frame size
+        plt.figure(figsize=(self.__frames[0].shape[1] / 72.0, self.__frames[0].shape[0] / 72.0),
+                   dpi=72)
+
+        patch = plt.imshow(self.__frames[0])
+        plt.axis('off')
+
+        def animate(i):
+            patch.set_data(self.__frames[i])
+
+        anim = animation.FuncAnimation(fig=plt.gcf(),
+                                       func=animate,
+                                       frames=len(self.__frames),
+                                       interval=50)
+        anim.save(filename=path + filename,
+                  writer='imagemagick',
+                  fps=60)
 
 
 if __name__ == '__main__':
@@ -516,7 +550,7 @@ if __name__ == '__main__':
                            screen_width=screen_width,
                            screen_height=screen_height)
 
-    env.load_Q_learner(saved_Q_learner_filename)
-    env.learn(episodes_num, render=True)
-    env.save_Q_learner(saved_Q_learner_filename)
+    # env.load_Q_learner(saved_Q_learner_filename)
+    # env.learn(episodes_num, render=True)
+    # env.save_Q_learner(saved_Q_learner_filename)
     env.act_out_optimally()
