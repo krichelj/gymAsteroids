@@ -7,32 +7,35 @@ import pickle
 import math
 import itertools
 import gym
+import gym.envs.classic_control.rendering as gym_rendering
 import tqdm
 from typing import Tuple, List, Dict
 
 RENDER = True
 
-if RENDER:
-    from gym.envs.classic_control.rendering import Viewer, Transform, make_polygon, make_circle
-
 
 class AgentState2D:
-    def __init__(self, position: np.array, screen_ratios: np.array = None):
+    def __init__(self,
+                 position: np.array,
+                 screen_ratios: np.array = None):
         self.position = position
 
         if RENDER:
             assert screen_ratios is not None
 
-            self._transform = Transform()
+            self._transform = gym_rendering.Transform()
             self.screen_ratios = screen_ratios
 
-    def reposition(self, position: np.array):
+    def reposition(self,
+                   position: np.array):
         self.__set_position(position)
 
-    def step(self, step_vector: np.array):
+    def step(self,
+             step_vector: np.array):
         self.__set_position(self.position + step_vector)
 
-    def __set_position(self, position: np.array):
+    def __set_position(self,
+                       position: np.array):
         self.position = position
 
         if RENDER:
@@ -44,7 +47,11 @@ class AgentState2D:
 
 
 class CircleAgentState2D(AgentState2D):
-    def __init__(self, position: np.array, radius: float = None, screen_ratios: np.array = None, color: Tuple = None):
+    def __init__(self,
+                 position: np.array,
+                 radius: float = None,
+                 screen_ratios: np.array = None,
+                 color: Tuple = None):
         super(CircleAgentState2D, self).__init__(position, screen_ratios)
 
         if RENDER:
@@ -52,7 +59,7 @@ class CircleAgentState2D(AgentState2D):
             assert screen_ratios is not None
 
             self.__radius = radius
-            self.circle = make_circle(radius)
+            self.circle = gym_rendering.make_circle(radius)
             self.circle.add_attr(self._transform)
 
             if color:
@@ -60,7 +67,10 @@ class CircleAgentState2D(AgentState2D):
 
 
 class SquareAgentState2D(AgentState2D):
-    def __init__(self, position: np.array, side_length: int = None, screen_ratios: np.array = None,
+    def __init__(self,
+                 position: np.array,
+                 side_length: int = None,
+                 screen_ratios: np.array = None,
                  color: Tuple = None):
         super(SquareAgentState2D, self).__init__(position, screen_ratios)
 
@@ -77,7 +87,7 @@ class SquareAgentState2D(AgentState2D):
             bottom = position_y - half_side_length
 
             square_points_positions = [(left, bottom), (left, top), (right, top), (right, bottom)]
-            self.square = make_polygon(square_points_positions, filled=True)
+            self.square = gym_rendering.make_polygon(square_points_positions, filled=True)
             self.square.add_attr(self._transform)
 
             if color:
@@ -174,7 +184,8 @@ class QLearner:
         self.__epsilon = epsilon
         self.learning_episodes = 0
 
-    def get_learning_next_action_id(self, old_state_id: Tuple) -> int:
+    def get_learning_next_action_id(self,
+                                    old_state_id: Tuple) -> int:
         """
         Epsilon-greedy algorithm for choosing the next learning action:
             1. First draw a float random_draw in [0, 1] and compare it to the value of self.__epsilon
@@ -200,7 +211,11 @@ class QLearner:
 
         return next_action_id
 
-    def update_q_matrix(self, old_state_id: Tuple, new_state_id: Tuple, reward: int, next_action_id: int):
+    def update_q_matrix(self,
+                        old_state_id: Tuple,
+                        new_state_id: Tuple,
+                        reward: int,
+                        next_action_id: int):
         """
         Q-Learning update rule implementation
         Updates the Q-table inplace with respect to the learning parameters
@@ -269,8 +284,12 @@ class AsteroidsGameEnv(gym.Env):
         observed_moves_n = len(self.__observed_moves)
         self.__actions = {i: action for i, action in enumerate(actions.values())}
         self.__action_space_n = len(actions)
-        self.__action_space = gym.spaces.discrete.Discrete(self.__action_space_n)
-        self.q_learner = QLearner(self.__action_space_n, observed_moves_n, alpha, gamma, epsilon)
+        self.__action_space = gym.spaces.discrete.Discrete(n=self.__action_space_n)
+        self.q_learner = QLearner(action_space_n=self.__action_space_n,
+                                  observed_moves_n=observed_moves_n,
+                                  alpha=alpha,
+                                  gamma=gamma,
+                                  epsilon=epsilon)
         self.seed()
 
         if RENDER:
@@ -366,7 +385,8 @@ class AsteroidsGameEnv(gym.Env):
 
         return new_state
 
-    def step(self, action_id: int) -> Tuple[AsteroidsGameState, int, bool]:
+    def step(self,
+             action_id: int) -> Tuple[AsteroidsGameState, int, bool]:
         new_state = None
         done = False
         reward = 0
@@ -389,9 +409,10 @@ class AsteroidsGameEnv(gym.Env):
 
         return new_state, reward, done
 
-    def render(self, mode: str = 'human'):
+    def render(self,
+               mode: str = 'human'):
         if self.__viewer is None:
-            self.__viewer = Viewer(*self.__screen_shape)
+            self.__viewer = gym_rendering.Viewer(*self.__screen_shape)
 
             for observed_element in self.__observed_elements.values():
                 observed_element_square = observed_element.square
@@ -414,7 +435,10 @@ class AsteroidsGameEnv(gym.Env):
 
         return render_result
 
-    def learn(self, episodes_num: int, render: bool = True, step_delay: float = None):
+    def learn(self,
+              episodes_num: int,
+              render: bool = True,
+              step_delay: float = None):
         print('Starting to learn...')
         self.__learning = True
 
@@ -442,7 +466,8 @@ class AsteroidsGameEnv(gym.Env):
         self.close()
         # self.__save_frames_as_gif()
 
-    def act_out_optimally(self, step_delay: float = 0.1):
+    def act_out_optimally(self,
+                          step_delay: float = 0.1):
         self.__state = self.reset()
         num_of_collisions = 0
 
@@ -470,14 +495,16 @@ class AsteroidsGameEnv(gym.Env):
         print(f'Test done. ' + (f'Collided a total of {num_of_collisions} times' if num_of_collisions else
                                 'NO COLLISIONS! HOORAY!'))
 
-    def save_Q_learner(self, saved_Q_table_filename: str):
+    def save_Q_learner(self,
+                       saved_Q_table_filename: str):
         with open(saved_Q_table_filename, 'wb') as f:
             pickle.dump(self.q_learner, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         print(f'\nQ-learner saved to {saved_Q_table_filename}. '
               f'Total learning episodes: {self.q_learner.learning_episodes}\n\n\n')
 
-    def load_Q_learner(self, saved_Q_table_filename: str):
+    def load_Q_learner(self,
+                       saved_Q_table_filename: str):
         if os.path.exists(saved_Q_table_filename):
             with open(saved_Q_table_filename, 'rb') as f:
                 self.q_learner = pickle.load(f)
@@ -521,7 +548,7 @@ if __name__ == '__main__':
     num_of_asteroids = 400
     screen_width = 1400
     screen_height = int(screen_width / 1.5)
-    episodes_num = 10
+    episodes_num = 1000
     step_delay = 1
     observed_moves = {'x': [-1, 0, 1],
                       'y': [0, 1, 2]}
@@ -551,6 +578,6 @@ if __name__ == '__main__':
                            screen_height=screen_height)
 
     # env.load_Q_learner(saved_Q_learner_filename)
-    # env.learn(episodes_num, render=True)
+    # env.learn(episodes_num, render=False)
     # env.save_Q_learner(saved_Q_learner_filename)
     env.act_out_optimally()
