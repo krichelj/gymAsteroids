@@ -104,7 +104,7 @@ class AsteroidsGameEnvState:
         self.__grid_side_length = grid_side_length
 
         rounded_grid_side_length = round(self.__grid_side_length)
-        self.__xy_grid = np.zeros([rounded_grid_side_length, rounded_grid_side_length], dtype=np.int)
+        self.__xy_grid = np.zeros([rounded_grid_side_length, rounded_grid_side_length])
 
         for asteroid in self.__asteroids.values():
             asteroid_x, asteroid_y = asteroid.position
@@ -138,7 +138,7 @@ class AsteroidsGameEnvState:
 
     def __str__(self) -> str:
         return f"Quad: {self.__quad}\nClose positions:\n" + \
-               '\n'.join([f'{position}: {is_dangerous}' for position, is_dangerous in self.__k_positions.items()])
+            '\n'.join([f'{position}: {is_dangerous}' for position, is_dangerous in self.__k_positions.items()])
 
 
 class QLearner:
@@ -209,6 +209,8 @@ class QLearner:
 
         if next_action_id in range(self.__action_space_n) and \
                 len(old_state_id) == len(new_state_id) == self.__observed_moves_n:
+            old_state_id = list((int(k) for k in old_state_id))
+            new_state_id = list((int(k) for k in new_state_id))
             old_q_value = self.Q_table[old_state_id]
             max_value = np.max(self.Q_table[new_state_id, :])
 
