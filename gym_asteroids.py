@@ -7,9 +7,9 @@ import pickle
 import math
 import itertools
 import gym
-import gym.envs.classic_control.rendering as gym_rendering
+import gym.envs.classic_control.rendering as gym_R
 import tqdm
-from typing import Tuple, List, Dict
+from typing import Tuple, Sequence, Dict
 
 RENDER = True
 
@@ -23,7 +23,7 @@ class AgentState2D:
         if RENDER:
             assert screen_ratios is not None
 
-            self._transform = gym_rendering.Transform()
+            self._transform = gym_R.Transform()
             self.screen_ratios = screen_ratios
 
     def reposition(self,
@@ -59,7 +59,7 @@ class CircleAgentState2D(AgentState2D):
             assert screen_ratios is not None
 
             self.__radius = radius
-            self.circle = gym_rendering.make_circle(radius)
+            self.circle = gym_R.make_circle(radius)
             self.circle.add_attr(self._transform)
 
             if color:
@@ -87,7 +87,7 @@ class SquareAgentState2D(AgentState2D):
             bottom = position_y - half_side_length
 
             square_points_positions = [(left, bottom), (left, top), (right, top), (right, bottom)]
-            self.square = gym_rendering.make_polygon(square_points_positions, filled=True)
+            self.square = gym_R.make_polygon(square_points_positions, filled=True)
             self.square.add_attr(self._transform)
 
             if color:
@@ -106,8 +106,9 @@ class AsteroidsGameState:
       grid_side_length: The length of the grid size, which is assumed to be a square
     """
 
-    def __init__(self, quad: CircleAgentState2D, asteroids: Dict[int, CircleAgentState2D],
-                 observed_moves: List[np.array], grid_side_length: int):
+    def __init__(self, quad: CircleAgentState2D,
+                 asteroids: Dict[int, CircleAgentState2D],
+                 observed_moves: Sequence[np.array], grid_side_length: int):
         self.__quad = quad
         self.__asteroids = asteroids
         self.__grid_side_length = grid_side_length
@@ -269,7 +270,7 @@ class AsteroidsGameEnv(gym.Env):
                  q_p_0: np.array,
                  num_of_asteroids: int,
                  actions: Dict[str, Tuple[float, float]],
-                 observed_moves: Dict[str, List[int]], alpha: float,
+                 observed_moves: Dict[str, Sequence[int]], alpha: float,
                  gamma: float,
                  epsilon: float,
                  quad_radius: float = None,
@@ -277,7 +278,7 @@ class AsteroidsGameEnv(gym.Env):
                  screen_width: int = None,
                  screen_height: int = None
                  ):
-        super(AsteroidsGameEnv, self).__init__()
+        super().__init__()
         self.__grid_side_length = grid_side_length
 
         self.__observed_moves = list(itertools.product(observed_moves['x'], observed_moves['y']))
@@ -327,7 +328,8 @@ class AsteroidsGameEnv(gym.Env):
 
         self.__frames = []
 
-    def seed(self, seed=None) -> List[int]:
+    def seed(self,
+             seed=None) -> Sequence[int]:
         self.__np_random, seed = gym.utils.seeding.np_random(seed)
         return [seed]
 
@@ -412,7 +414,7 @@ class AsteroidsGameEnv(gym.Env):
     def render(self,
                mode: str = 'human'):
         if self.__viewer is None:
-            self.__viewer = gym_rendering.Viewer(*self.__screen_shape)
+            self.__viewer = gym_R.Viewer(*self.__screen_shape)
 
             for observed_element in self.__observed_elements.values():
                 observed_element_square = observed_element.square
@@ -577,7 +579,7 @@ if __name__ == '__main__':
                            screen_width=screen_width,
                            screen_height=screen_height)
 
-    # env.load_Q_learner(saved_Q_learner_filename)
+    # env.load_Q_learner(saved_Q_table_filename=saved_Q_learner_filename)
     # env.learn(episodes_num, render=False)
     # env.save_Q_learner(saved_Q_learner_filename)
     env.act_out_optimally()
